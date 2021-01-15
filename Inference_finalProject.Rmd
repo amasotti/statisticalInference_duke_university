@@ -1,0 +1,552 @@
+---
+title: "Statistical inference with the GSS data - Antonio Masotti"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The data used in this project come from the *General Social Survey* (henceforth *GSS*), a data diffusion project started in 1972. The database used here contains cumulative data gathered between 1972 and 2012. The total length of the database is 57061 (corresponsing to the individual subjects) for which 114 responses to as many variables are reported (including NAs and Missing data).
+
+The data are provided with the purpose of providing scholars in different fields but also policy makers and politicians information on what North Americans think about many central social and political issues such as gender, spending priorities, intergroup relaitons and so on.
+
+
+
+**Important additional information**
+
++ The General Codebook and Official documentation: [download here](https://www.icpsr.umich.edu/web/ICPSR/studies/34802/versions/V1/datadocumentation)
++ A list of the variables with a short description is available [here](https://gss.norc.org/documents/codebook/GSS_Codebook_index.pdf)
+
+**Methodology**: The *GSS* contains data drawn from 68,814 interviews conducted between 1972 and 2012. The questionnaires were designed according to the NORC standards, supervised by 105 sociologists and social scientists. 
+The probability sample was designed, in order to avoid having two interviewed subjects in the same household, which greatly helps assuming independence in the responses.
+The questions in the survey can be divided into three classes: 
+
++ Permanent questions (present in at least 2/3 of the annual surveys)
++ Few occasional questions
+
+The field work techniques changed greatly between 1972 and 2002. Data until 2002 were collected manually and then evaluated. Starting from 2002 all data were collected with the assistance of computers, without printed questionnaires.
+
+**Generalisation/Causality**: The *GSS* is best suited for observational studies, since the data were not collected in an experimental environment or using specifically designed experiments blocking for confusing variables and checking through placebo/control groups. This is highly significant in the sense that the conclusion drawn from such a database are at best generalisable to the American population but don't allow us to infere causal correlation between the available variables.
+
+**Other possible issues**: 
+
++ Not every variable was collected consequently in the whole time range (1972-2012). Some years (e.g. 1981,1992) are missing at all and some variable, including the so called *permanent questions*, were collected only in some years or every 2-3 years. It's important to keep this in mind when evaluating the response to some questions over two or more years. 
+
++ The sample sizes constitutes another factor, that we should consider carefully. Between 1972 and 2012 64,814 people were interviewed. However, the number of interviewed subjects in each year varies considerably (1484 subjects in 1974 and 2904 in 1996). This is not really a problem, since we can normalize our statistics according to the corresponding number of subjects but is in any case a factor we cannot afford to ignore, especially in the EDA phase.
+
++ The data from 1972 up to 2005 were drawn out of a sample of English-speaking persons. Starting from 2006 also Spanish-speakers were added. For some possible research questions, this could be a non-trivial contributing factor (especially for questions relative to occupation status, linguistic knowledge etc.). The same hold for other major changes which are nevertheless well documented in the Generale Codebook associated with the *GSS*. Especially changes in the probability sample desing between 1974 and 1975 should be carefully considered.
+
+
+* * *
+
+## Part 2: Research question
+
+Does a migratory background have an effect on the educational degree? With other words do people whose parents were born in the US have different probabilities of reaching a higher educational degree? 
+
+The importance of this question is almost obvious and has several practical applications. Migration background is potentially a criterium in assigning scolarships and in many countries, student with migration background take advantage of special support. These policies are based on the assumption, that migration background negatively influences the chances of reaching a higher degree. The purpose of this research question is to check this claim by looking at the data in the *GSS* and using statistical inference to calculate the probability that eventual differences in the groups are due to chance.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+The relevant variables for our research questions are the following:
+
++ `degree` : a categorical variable reporting the highest degree achieved by the respondent.
++ `parborn` : a categorical variable reporting wether one or both parents of the interview were born in the US.
+
+Let's first take an exploratory look at the data by extracting the relevant informations from the `gss database`:
+
+```{r degree, warning=F}
+
+# Extract counts from the variable "degree"
+degree <- gss %>% 
+  group_by(degree) %>% 
+  summarise(count = n(), percentage = round(n()/dim(gss)[1],3))
+
+
+degree
+```
+
+We notice that there are some missing data in our subset. Since this represent only a small fraction of the interviewed subjects (~ 2%), we can ignore them assuming that this will not greatly change our results.
+
+```{r degree_without_NA}
+degree <- gss %>% 
+  filter(!is.na(degree)) %>% 
+  group_by(degree) %>% 
+  summarise(count = n(), percentage = round(n()/length(which(!is.na(gss$degree))),3))
+
+
+degree
+```
+
+In the previous code we used the R function `filter` to ignore the rows in `gss` for which data about the *degree* are missing.
+The percentages are now calculated taking into account not the whole set of observations in `gss` but only those individuals for which the data are available. This is easily achieved with the code `length(which(!is.na(gss$degree)))`. The `which` function creates a logical vector which tell us, if the column *degree* has or has not a missing value. `length` then counts the rows (= inviduals) for which the data are available.
+
+
+
+
+We can now do the same for the variable `parborn` which contains information about the native country of the parents. Here again, data are missing for 9295 subjects (~ 1.6%). These will be ignored.
+
+```{r parborn_extract_data}
+parborn <- gss %>% 
+  filter(!is.na(parborn)) %>% 
+  group_by(parborn) %>% 
+  summarise(count = n(), percentage = round(n()/length(which(!is.na(gss$parborn))),3))
+
+
+parborn
+```
+
+We now have data about the single variables. For practical reasons we can restrict the original database to the rows we're interested in and then have a first visual impression of the collected data:
+
+```{r new_db}
+gss_2 <- gss %>% 
+  filter(!is.na(degree), !is.na(parborn))
+
+# visualize degree data:
+gss_2 %>% 
+  ggplot(aes(x=degree)) +
+  geom_bar() +
+  ggtitle("Counts for the variable 'degree' ")
+
+```
+
+The plot above simply visualizes the counts of individuals for each level of the categorical variable `degree`. We notice that the vast majority of interviewed had an high school degree. This can reflect situation in the population, be due to a bias in the sample chosen or be due to the fact that until 2006 only adults English-speaking were taking into account, ignoring other minorities.
+This can be potentially a confusing factor for the present research question. Let's check this last hypothesis by drawing a plot with the same information restricted to the interviews conducted in 2012:
+
+```{r}
+gss_2 %>% 
+  filter(year==2012) %>% 
+  ggplot(aes(x=degree)) +
+  geom_bar() +
+  ggtitle("Counts for the variable 'degree' ")
+```
+
+Data from the year 2012 show at least at the first glance the same distribution for the degree variable. If we had noticed massive differences, it would have been a good idea to restrict our analysis to some specific years. The previous graph shows us, however, that the change in the probability sample in the late years have not affected greatly the distribution of this variable (although it may have affected the response to other questions).
+
+We can also check the development of the response to the `degree` varibale in the years using a line plot:
+
+```{r}
+gss_2 %>% 
+  ggplot(aes(x=year,color=degree)) +
+  geom_line(stat="count") +
+  scale_x_continuous(breaks=seq(1977,2012,3), limits=c(1977,2012))
+```
+
+What this plot shows us is, that there was indeed a development in the number of people with High School degree between 1992 and 1995. The changes are probably connected with changes in the sampling tecniques (larger samples) or other factors (historical, social, economical etc.). The relative distribution of percentages for each groups has remained relatively stable, with the majority of interviewed holding a High School degree and the minority of them a Junior College degree.
+
+
+We also want to visualize the data for the variabel `parborn`:
+
+```{r parborn}
+gss_2 %>% 
+  ggplot(aes(x=parborn)) +
+  geom_bar() +
+  ggtitle("Counts for the `parborn` variable") +
+  theme(axis.text.x = element_text(angle = -40,hjust=.2) )
+
+```
+
+The data show that very high portion of the subjects were children of U.S. cititzen. For some of the groups the data are so small, that it is almost impossible to see them in the plot. We can however apply a logarithmic transformation, to get a more informative picture of the distribution along the groups still preserving the original relative distribution:
+
+```{r}
+gss_2 %>% 
+  ggplot(aes(x=parborn)) +
+  geom_bar() +
+  ggtitle("Counts for the `parborn` variable") +
+  theme(axis.text.x = element_text(angle = -40,hjust=.2) ) +
+  scale_y_continuous(trans="log2")
+```
+
+
+Similarly to what we've done before, we can check if there was massive changes in the time range 1972 - 2012 for this variable:
+
+```{r}
+gss_2 %>% 
+  ggplot(aes(x=year,color=parborn)) +
+  geom_line(stat="count") +
+  scale_x_continuous(breaks=seq(1972,2012,3), limits=c(1972,2012))
+```
+
+We see in the previous plot a similar development around the years 1990-1993, with all the groups slightly increasing.
+
+The next step in this preliminary EDA-phase is to create a contingency table and have a look at the correlation between `degree` and `parborn` on the basis of the *GSS* data. 
+
+Let's start with creating a table with both variables:
+
+```{r degree x parborn}
+degree_parborn <- gss_2 %>% 
+  group_by(parborn, degree) %>% 
+  summarise(count = n())
+
+degree_parborn
+
+str(degree_parborn)
+```
+
+We have a table with two categorical variable:
+
++ degree: a varibale with 5 levels corresponding to different educational degree
++ parborn: a variable with 9 levels corresponding to the provenience of the parents
+
+An alternative way to create this table is by using the `xtabs` built-in function of R:
+```{r}
+xtabs(data=gss_2, formula = ~degree+parborn)
+
+```
+
+
+The last step in the exploration of these data is to draw a plot with both variable and try to get an idea, if there is a correlation between the different groups. I've also applied a log-transformation to get a better idea of the distribution even with small values:
+
+```{r}
+gss_2 %>% 
+  ggplot(aes(x=degree, fill=parborn)) +
+  geom_bar(position="dodge") +
+  theme(axis.text.x = element_text(angle = -40,hjust=.2) ) +
+  scale_y_continuous(trans="log2")
+```
+
+An alternative visualization of the same data would be the following:
+
+```{r}
+gss_2 %>% 
+  ggplot(aes(x=parborn)) +
+  geom_bar(stat="count") +
+  theme(axis.text.x = element_text(angle = -40,hjust=.2) ) +
+  scale_y_continuous(trans="log2") + 
+  facet_grid(.~degree)
+
+gss_2 %>% 
+  ggplot(aes(x=degree)) +
+  geom_bar(stat="count") +
+  theme(axis.text.x = element_text(angle = -40,hjust=.2) ) +
+  scale_y_continuous(trans="log2") + 
+  facet_wrap(.~parborn)
+```
+
+We observe slight differences in the distribution for the different cases. In general it seems that fewer people whose both parents were not born in the US had a higher degree. This difference is however not very big if one is to judge alone on the plot and the number of people in each group varies considerably, so that we must take into account the size effect.
+
+For this reason we now switch to the next phase and try to get a better, more precise, picture of what's going on using the tools of the inference statistics. In order to simplify the calculations we restrict the research questions to the value *Graduate* for the variable `degree`. 
+There is also another reason to restrict the analysis to this value: the purpose of the reaserch question is to provide data for policy makers and politicians and one possible application is with respect to the criteria for eventual scholarship. This criterium is at most relevant for the highest educational degree (hence Graduate). 
+Moreover the data about Graduate subjects, aged from 21 onwards, gives us informations about the influence of migration background on the long run. Actual policies and statal assistance help mitigate social differences for lower educational degree. University students have in many cases less access to such assistance.
+
+
+
+* * *
+
+## Part 4: Inference
+
+```{r}
+graduate_parborn <- gss_2 %>% 
+  group_by(parborn) %>% 
+  summarise(graduate = length(which(degree == "Graduate")),
+            non_graduate = length(which(degree != "Graduate")),
+            total = n())
+
+
+graduate_parborn
+```
+
+Let's have a last look at the data taking into consideration only the chosen variables. The first step is to gather the information needed. For this purpose we can use the `gather` function in the `tidyr` package, which gathers data from different columns:
+
+```{r}
+library(tidyr)
+graduate_parborn2 <- gather(graduate_parborn, degree, count, graduate:non_graduate)
+
+```
+
+For readability sake we can reorder the columns in the following order:
+
++ Parent provenience - degree - count - total (for both degree values)
+
+```{r reorder graduate_parborn}
+graduate_parborn2 <- graduate_parborn2[,c(1,3,4,2)]
+head(graduate_parborn2,4)
+```
+
+and finally add a percentage column:
+
+```{r}
+graduate_parborn2 <- graduate_parborn2 %>% 
+  mutate(percentage = round(count/total,3))
+
+head(graduate_parborn2,4)
+str(graduate_parborn2)
+```
+
+Now we can have a better visual impression of the correlation found:
+
+```{r, warning=FALSE}
+# Barplot without transformation
+graduate_parborn2 %>% 
+  ggplot(aes(x=parborn, y=count, fill=degree)) +
+  geom_bar(stat="identity", position="dodge") +
+  theme(axis.text.x = element_text(angle = -40,hjust=.2) ) 
+  
+
+# Barplot with transformation
+graduate_parborn2 %>% 
+  ggplot(aes(x=parborn, y=count, fill=degree)) +
+  geom_bar(stat="identity", position="dodge") +
+  theme(axis.text.x = element_text(angle = -40,hjust=.2) ) +
+  scale_y_continuous(trans="log2")
+
+# Barplot using facets
+graduate_parborn2 %>% 
+  ggplot(aes(x=parborn, y=count))+
+  geom_bar(stat="identity") +
+  theme(axis.text.x = element_text(angle = -40,hjust=.2) ) +
+  scale_y_continuous(trans="log2") +
+  facet_grid(.~degree)
+```
+
+When working with data like the ones collected here, inference statistics provides a variety of tools to explore and draw conclusions from the data.
+In this part of the project I will use three methods to check if the differences noticed in the exploratory analysis can be due to chance or not. 
+Since we're dealing with observational study, if we will be able to reject the $H_0$, this would be **no proof** that the provenience of the parents diretcly influences the degree achieved by the children but being able to reject the Null Hypothesis would provide evidence that the correlation is not due to chance and that further, at best, experimental evidence are needed to find out the reasons and rule out eventual third factors.
+
+
+The three methods I will try toapply are the followings:
+
++ Chi-square of independence: this will provide us with a probability that the the difference between groups are indeed bigger than expected, if each group had equal probability to reach a given degree.
++ Hypothesis testing, comparison of two or more proportions. This will tell us how probable is it, that the difference are due to chance.
++ Simulation: Similar to hypothesis testing but the results will be based on an independent, computer assisted, simulation instead of the pooled/estimate values from the *GSS*.
+
+### $\chi^2$ test of Independence 
+
+Recall the contingency table:
+
+```{r}
+graduate_parborn2
+```
+
+
+The first thing we need to do, in order to calculate the p for the $\chi^2$ of independence is to calculate the expected percentage for all graduate in the sample:
+
+```{r}
+# Sum the values in the column "count", if degree is "graduate"
+total_graduate <- sum(graduate_parborn2[which(graduate_parborn2[,"degree"] == "graduate"),"count"])
+total_graduate
+
+# Sum the values in the column "count", if degree is "non_graduate"
+total_non_graduate <- sum(graduate_parborn2[which(graduate_parborn2[,"degree"] == "non_graduate"),"count"])
+total_non_graduate
+
+# Sum the values in the column "count" (total observations)
+total <- sum(graduate_parborn2[,"count"])
+total
+
+# Expected percentage of graduate based on the whole sample:
+total_graduate/total
+
+```
+
+The datum in the last calculation tells us that the total percentage of graduate students in the sample is approximately 7,8% (or p = 0.07279).
+
+We now check the differences between total percentage and the observational data for each groups. We already have the observed percentages in the table. We can just add two columns, which tell us the expected value and if the observed value is bigger or less:
+
+```{r}
+graduate_parborn2 <- graduate_parborn2 %>% 
+  mutate(expected_graduate = ifelse(degree=="graduate",
+                                    round(graduate_parborn2$total * 0.07279449,3),
+                                    round(graduate_parborn2$total * (1-0.07279499),3)),
+         difference = ifelse(expected_graduate - count == 0,
+                             "as expected",
+                             ifelse(expected_graduate - count > 0,
+                                    "more than expected",
+                                    "less than expected")))
+
+graduate_parborn2
+```
+
+In order to apply the $\chi^2$ test we now need to sum up all differences in the following way: $\chi^2 = \sum\limits_{i=1}^k \frac{(O_i - E_i)^2}{E_i}$ where *O* stands for *observed* and *E* stands for *Expected*:
+
+```{r}
+# Calculate the single weighed differences
+graduate_parborn2 <- graduate_parborn2 %>% 
+  mutate(chi_square = ((expected_graduate - count)**2)/expected_graduate )
+
+
+head(graduate_parborn2)
+
+# Sum all weighed differences:
+
+test_chsq <- sum(graduate_parborn2$chi_square)
+
+# Calculate the Degrees of Freedom:
+df_chisq <- (9-1)*(2-1)
+df_chisq
+```
+
+The degrees of freedom for the independence test is calculated with the formula  $df = (R-1) \times (C-1)$ where R are the rows and C the columns. We have 9 rows (corresponding to the parborn values) nd 2 columns (graduate, non-graduate), which means that our statistics must be calculated with 8 degrees of freedom:
+
+```{r chi-square probability}
+pchisq(test_chsq,df_chisq,lower.tail = F)
+```
+
+The $\chi^2$ independence test gave us a very tiny probability, surely below every applicable significance level. This test suggests, that the two variables are dependent and the difference are not due to chance. What the chi-square test doesn't tell us is, what group is exactly guilty for the variation and also if there is or not a causal relation between the two variables. 
+
+
+### Hypothesis testing (theoretical)
+
+With the actual data we cannot apply the ANOVA tests, although we're dealing with percentages in different groups. The reason is that the condition for ANOVA are not satisfied. In particalur we cannot assume "nearly normality", i.d. the condition that each group follows a nearly normal distribution. If there is indeed an effect of the variable `parborn` on the degree achieved, it could well be that these distribution are highly skewed and in some cases we have very few successes/failure (0 individuals with Graduate degree in the group "Unkwnown origin for both parents") so that the normality condition is surely not satisfied.
+
+If we try to use the `inference` function, we will miss some data and have a wrong result, which suggest no effect of the groups on the degree variables. This could correspond to the thruth but since the conditions are not met, we cannot trust the results of th F-statistics.
+
+```{r inference_theoretical}
+inference(data=graduate_parborn2, y = count, x = parborn, statistic = "mean", type = "ht", method = "theoretical", alternative = "greater" )
+```
+
+
+### Simulation
+
+Since the success-failure condition doesn't hold for each sample, the only method we can apply is the simulation method. In this way we can produce new - simulated - data and compare them with the observed data in the table. 
+
+Let's than restrict the data to just two cases: graduate vs. non-graduate counts for the group *both parents born in the US* and *Neither parents born in the US*. We will then run a simulation for these groups. 
+
+```{r}
+graduate_parborn3 <- graduate_parborn2 %>% 
+  filter(parborn == "Both In U.S" | parborn == "Neither In U.S")
+
+head(graduate_parborn3)
+```
+
+We start by calculating the probability of being a graduate student in the two groups and the corresponding difference:
+
+```{r}
+# Graduate students among those, whose parents were both born in the US
+p_grad_bothUS <- 2635/38588
+p_grad_bothUS
+
+# Graduate students among those, whose parents were both not born in the US
+p_grad_neitherUS <- 584/5762
+p_grad_neitherUS
+
+# total probability
+p_graduate_total <- (2635+584)/(38588+5762)
+p_graduate_total
+```
+
+We can now construct two sample, respectively as big as the total number of subjects in the two parborn groups: 38588 for *Both in US* and 5762 for *Neither in the US*. We then run the simulation.
+Our Null Hypothesis ($H_0$) states that there is no difference between groups and both have a p = ``` r p_graduated_total``` of being a graduate student. We will compare this hypothesis with the data gained with the simulation and construct a confidence interval.
+
+```{r}
+possible_outcomes <- c("graduate", "non_graduate")
+
+simulation_bothUS <- sample(possible_outcomes,
+                            size=38588,
+                            replace=T,
+                            prob = c(p_graduate_total,1-p_graduate_total))
+
+simulation_neitherUS <- sample(possible_outcomes,
+                               size=5762,
+                               replace=T,
+                               prob = c(p_graduate_total,1-p_graduate_total))
+
+table(simulation_bothUS)
+table(simulation_neitherUS)
+```
+
+
+We can now calculate the simulated probabilities:
+
+```{r}
+p_gradu_bothUS_simulated <- table(simulation_bothUS)["graduate"]/38588
+p_gradu_neitherUS_simulated <- table(simulation_neitherUS)["graduate"]/5762
+
+
+p_sim <- p_gradu_neitherUS_simulated - p_gradu_bothUS_simulated
+p_sim
+```
+
+*p_sim* (the difference in the simulated probability) should be 0 according to the $H_0$. What we find is a value which is small but nevertheless not really zero. We want to conclude this simulation by calculating the probability that this difference is due to chance. 
+
+We calculate the SE for the observed data. Since we're dealing with two proporitons, we must use the formula for the standard error for two proportions: $SE = \sqrt{\frac{p_1 \times (1 - p_1)}{n_1}+\frac{p_2 \times (1 - p_2)}{n_2}}$. In our case:
+
+```{r}
+se_graduate <- sqrt(((p_grad_bothUS*(1-p_grad_bothUS))/38588) +
+                      ((p_grad_neitherUS*(1-p_grad_neitherUS))/5762))
+se_graduate
+```
+
+We construct a 95% ci for the Null Hypothesis, centred at 0 (no difference) and then calculate the p of observing a difference of ```r p_sim```. We're - with other words - searching for the p of observing a value in the shaded area of the normal distribution here below:
+
+
+```{r}
+# draw the normal distribution centred at 0 (Null hypothesis, no difference) with a deviation equal to the SE of the comparison of the two proportions:
+ggplot(NULL, aes(x = c(-.1,.1))) +
+  #   Non-significant area
+  stat_function(fun = dnorm,
+                geom = "line",
+                xlim = c(-.1,.1),
+                args = list(mean = 0, sd = se_graduate)
+  )+ # shaded area
+  stat_function(fun = dnorm,
+                geom = "area",
+                fill = "steelblue",
+                xlim = c(p_sim,.1),
+                args = list(mean = 0, sd = se_graduate),
+                alpha = .5
+  )
+```
+
+```{r}
+# calculate the p, based on the difference found
+pnorm(p_sim,0,sd=se_graduate)
+```
+
+The p-value found is much higher than 0.05 (one of the standard significance level), so it is well possible that the difference is due to chance. We cannot reject the Null hypothesis and must stick with it. The data don't provide convincing evidence that the country in which the parents are born influences the degree achieved by the children. Further analysis are needed in order to find out if the provenience of the family together with other factors (socio-economic status) would influence the educational achievement of the children.
+
+The Chi-square test for independence had suggested that there is indeed a difference between the groups which is not due to chance. This was probably due to the effect of the very different size of the single groups and the small probabilities in some of those groups.
+
+```{r}
+gss %>% 
+  group_by(homosex) %>% 
+  summarise(count = n())
+```
+
+```{r}
+gss_clean <- gss %>% 
+  filter(!is.na(homosex), !is.na(conclerg))
+
+gss_clean %>% 
+  ggplot(aes(x = year, fill = homosex)) + 
+  geom_bar(position="fill", na.rm = TRUE) +
+  ylab("Proportions for acceptance of homosexual sexual relations") + 
+  xlab("Year") +
+  ggtitle("Stacked bar chart showing proportions of homosex with respect to each year")
+```
+
+```{r}
+homosex_year_prop <- gss_clean %>%
+  group_by(homosex, year) %>%
+  summarize(freq = n()) %>%
+  group_by(year) %>%
+  mutate(prop=freq/sum(freq))
+
+homosex_year_prop
+```
+
